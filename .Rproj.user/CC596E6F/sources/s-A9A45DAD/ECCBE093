@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583283439110.000,
+    "dirty" : true,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "ECCBE093",
+    "lastKnownWriteTime" : 1583297982,
+    "last_content_update" : 1583301859125,
+    "path" : "~/OneDrive - OIST/Repos/varroa-virus-networks/varroa-virus-networks.Rmd",
+    "project_path" : "varroa-virus-networks.Rmd",
+    "properties" : {
+        "cursorPosition" : "16,29",
+        "scrollLine" : "10"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
