@@ -1,28 +1,28 @@
-DWVa	Deformed wing virus, type a
-DWVc	Deformed wing virus type c
-IAPV	Israel acute paralysis virus of bees
-KBV	Kashmir bee virus, complete genome
-CBPV	Chronic bee paralysis virus RNA 1, complete genome
-ABPV	Acute bee paralysis virus, complete genome
-SBPV	Slow bee paralysis virus, complete genome
-LSV	Lake Sinai virus strain WHCC111282 hypothetical protein 1, hypothetical protein 2, hypothetical protein 3, and hypothetical protein 4 genes, complete cds
-BQCV	Black queen cell virus nonstructural polyprotein (orf1) and structural polyprotein (orf2) genes, complete cds
-SV	Sacbrood virus complete genome
-VDV1	Varroa destructor virus-1, complete genome
-VDV2	Varroa destructor virus 2 isolate VDV-2, complete genome
-VDV3	Varroa destructor virus 3 isolate VDV-3, complete genome
-BMV	Bee Macula-like virus isolate France 878V, complete genome
-AFV	Apis flavivirus isolate RI-A polyprotein gene, complete cds
-ANV	﻿Apis mellifera nora virus 1
-ARV_2	Apis mellifera rhabdovirus-2 (ARV-2)
-AmFV	﻿Apis mellifera Filamentous virus (AmFV)
-VPVL_46	Varroa mite associated virus 1 isolate VPVL_46, complete genome
-VPVL_36	Varroa mite associated genomovirus 1 isolate VPVL_36, complete genome
-VTLV	Varroa Tymo-like virus isolate PSU-1var
-VDV4	Varroa destructor virus 4 isolate Phrae-Thailand polyprotein
-﻿VOV_1_1	Varroa orthomyxovirus-1 isolate IL segment 1
-﻿VOV_1_2	Varroa orthomyxovirus-1 isolate IL segment 2
-﻿VOV_1_3	Varroa orthomyxovirus-1 isolate IL segment 3
-﻿VOV_1_4	Varroa orthomyxovirus-1 isolate IL segment 4
-﻿VOV_1_5	Varroa orthomyxovirus-1 isolate IL segment 5
-﻿VOV_1_6	Varroa orthomyxovirus-1 isolate IL segment 6
+NC_004830.2 	DWVa
+ENA|CEND01000001|CEND01000001.1	DWVc
+NC_009025.1	IAPV
+NC_004807.1	KBV
+NC_010711.1	CBPV
+NC_002548.1 	ABPV
+NC_014137.1 	SBPV
+NC_032433.1 	LSV
+NC_003784.1 	BQCV
+NC_002066.1	SV
+NC_006494.1 	VDV1
+NC_040601.1	VDV2
+KX578272.1	VDV3
+ NC_027631.1 	BMV
+NC_035071.1	AFV
+KY354240.1 	ANV
+KY354234.1 	ARV_2
+﻿KR819915	AmFV
+MG571088.1	VPVL_46
+MG571087.1	VPVL_36
+NC_027619.1	VTLV
+MK032464.1	VDV4
+﻿MK032465     	﻿VOV_1_1
+MK032466	﻿VOV_1_2
+MK032467	﻿VOV_1_3
+MK032468	﻿VOV_1_4
+MK032469	﻿VOV_1_5
+MK032470	﻿VOV_1_6

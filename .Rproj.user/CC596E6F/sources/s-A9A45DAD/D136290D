@@ -1,0 +1,33 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1583409885237.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "D136290D",
+    "lastKnownWriteTime" : 1381126912,
+    "last_content_update" : 1583409885237,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "EF94619D",
+        "caption" : "SRR",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=SRR&cache_key=EF94619D",
+        "displayedObservations" : 35669,
+        "environment" : "",
+        "expression" : "SRR",
+        "object" : "SRR",
+        "preview" : 0,
+        "totalObservations" : 35669,
+        "variables" : 5
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 6,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}
