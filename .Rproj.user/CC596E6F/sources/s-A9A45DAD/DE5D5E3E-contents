@@ -1,2 +1,3 @@
 read_tsv("/Users/nuriteliash/OneDrive - OIST/Repos/varroa-virus-networks/data/kallisto/SRR533974.tsv.gz")
 SRR <- read_tsv("/Users/nuriteliash/OneDrive - OIST/Repos/varroa-virus-networks/data/kallisto/SRR533974.tsv.gz")
+joint <- left_join(virusId, df) %>% select(-target_id) %>% gather("library", "tpm", -description) 

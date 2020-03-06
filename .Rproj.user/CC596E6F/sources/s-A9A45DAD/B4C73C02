@@ -1,24 +1,24 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1583390787667.000,
+    "created" : 1583413704803.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
     "hash" : "0",
-    "id" : "D8BFFC98",
-    "lastKnownWriteTime" : 1583410032,
-    "last_content_update" : 1583410032,
+    "id" : "B4C73C02",
+    "lastKnownWriteTime" : 1583411638,
+    "last_content_update" : 1583411638,
     "path" : "~/OneDrive - OIST/Repos/varroa-virus-networks/data/viruses.txt",
     "project_path" : "data/viruses.txt",
     "properties" : {
-        "cursorPosition" : "0,0",
+        "cursorPosition" : "10,12",
         "scrollLine" : "0"
     },
     "read_only" : false,
     "read_only_alternatives" : [
     ],
-    "relative_order" : 4,
+    "relative_order" : 5,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "text"
