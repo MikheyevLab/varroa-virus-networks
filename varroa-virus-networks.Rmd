@@ -7,29 +7,115 @@ output: html_document
 
 ```{r libraries}
 library(tidyverse)
+setwd("/Users/nuriteliash/OneDrive - OIST/Repos/varroa-virus-networks")
+
 # awk '$3=="mRNA"' GCF_002443255.1_Vdes_3.0_genomic.gff | perl -n -e 'print "$1\t$2\n" if /gene=LOC(\d+);.*transcript_id=(.*)/' | gzip >! gene2isoform.txt.gz
 virusId <- read_tsv("data/viruses.txt", col_names = c("target_id", "description"))
+virusId[3:8, 2] <- "VOV_1"
 ```
 
 ```{r import}
+#make a function for mapping the reads
 read_kallisto <- function(filename) {
   sampleName <- sub("data/kallisto/(.*).tsv.gz","\\1", filename)
   return(read_tsv(filename) %>%
-           select(!!sampleName := tpm))
+           dplyr::select(!!sampleName := tpm))
 }
 
+# map the reads in the SRAs to varroa and viruses genomes into  a data frame 'df' which contains the SRA libraries and virus and varroa tpm 
 df <- list.files(path = "data/kallisto", full.names = TRUE) %>% 
   lapply(read_kallisto) %>% 
   bind_cols() 
 
-df$target_id <- list.files(path = "data/kallisto", full.names = TRUE)[1] %>% read_tsv() %>% select(target_id) %>% pull()
+# add a column "target_id" with the genes id
+df$target_id <- list.files(path = "data/kallisto", full.names = TRUE)[1] %>% read_tsv() %>% dplyr::select(target_id) %>% pull()
 
 saveRDS(df, file = "data/kallisto.rds")
 ```
 
-```{r}
-left_join(virusId, df) %>% select(-target_id) %>% gather("library", "tpm", -description) %>% ggplot(aes(x= library, y = tpm, fill = description)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90)) 
+```{vizualize viruses distribution and abundance in (1)abundacne plot; (2)PCA of viruses; (3)heat-map}
 
-princomp(left_join(virusId, df) %>% select(-target_id) %>% gather("library", "tpm", -description) %>% spread(description, tpm) %>% select(-library)) %>% biplot(.)
+### AIM: we want to see the viruses abundance in the data sets, for description and to know which should be exclude from further analysis 
+
+# first make the suitable data frame 
+x <- left_join(virusId, df, by = "target_id") %>% dplyr::select(-target_id) 
+  
+# next - we want to merge all 6 segments of VOV_1. 
+# so we sum their tpms in each library in a seperate table 'VOV_1':
+    VOV_1 <- x %>% 
+      dplyr::slice(3:8) %>%
+      group_by(description) %>%
+      summarize_all(sum)
+#filter out the segments of VOV_1,  
+x <- dplyr::filter(x, description != "VOV_1")
+
+# and bind the two dfs together 
+viruses_load <- rbind(x, VOV_1) 
+
+# reorder the viruses, so VOV_1 will in row number 3
+r <- 2
+insertRow <- function(x, VOV_1, r) {
+  x[seq(r+1,nrow(x)+1),] <- x[seq(r,nrow(x)),]
+  x[r,] <- VOV_1
+  x
+}
+
+insertRow(x, VOV_1, r)
+
+
+  # (1) abundance plot
+joined_virus_lib <- viruses_load %>% gather("library", "tpm", -description)
+
+ggplot(joined_virus_lib, aes(x= library, y = tpm, fill = description)) + geom_bar(stat = "identity") + theme(axis.text.x = element_text(angle = 90)) 
+
+# (2) plot a PCA of viruses abundance 
+joined_virus_lib_PCA <- joined_virus_lib %>% group_by(description, library) %>% summarise(tpm = sum(tpm)) %>% spread(description, tpm) %>% dplyr::select(-library) 
+
+virus_PCA <- princomp(joined_virus_lib_PCA)  
+
+biplot(virus_PCA)
+
+# (3) heat-map
+#make a heatmap for each virus (with log tpm). 
+
+# plot the viruses abundance in each library 
+x <- left_join(virusId, df, by = "target_id") %>% dplyr::select(-target_id) 
+  
+# sum all VOV_1 tpms in each library in a seperate table 'VOV_1':
+    VOV_1 <- x %>% 
+      dplyr::slice(3:8) %>%
+      group_by(description) %>%
+      summarize_all(sum)
+#filter out the segments of VOV_1,  
+x <- dplyr::filter(x, description != "VOV_1")
+
+# and insert the "VOV_1" in row 2 of df "x"
+r <- 2
+insertRow <- function(x, VOV_1, r) {
+  x[seq(r+1,nrow(x)+1),] <- x[seq(r,nrow(x)),]
+  x[r,] <- VOV_1
+  x
+}
+
+viruses_load <- insertRow(x, VOV_1, r)
+  
+
+# make a df with tpm in logscale
+virus_abund <- viruses_load %>%  
+    gather("library", "tpm", -description) 
+
+virus_abund[, 3] <- (virus_abund[,3]+ 0.000001)
+virus_abund[, 3] <- log10(virus_abund[,3]) 
+
+# now make a heat map
+library(dplyr)
+virus_heatmap <- ggplot(data = virus_abund, mapping = aes(x = description,
+                                                       y = library,
+                                                       fill = tpm)) +
+  geom_tile() +
+  xlab(label = "virus") + 
+  theme(axis.text.x = element_text(angle = 45)) 
+
+virus_heatmap
 ```
 

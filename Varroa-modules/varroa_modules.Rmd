@@ -5,33 +5,10 @@ library(tidyverse)
 library(vegan)
 library(DESeq2)
 library(ggfortify)
-
+library(WGCNA)
 ```
 
-
- בקובץ של תכונות של הוירוסים שמעניינים אותי. "ClinicalTraits.csv" לעשות כאן סדר!  להחליף את הקובץ 
-```{Load trait data}
-traitData = read.csv("ClinicalTraits.csv");
-dim(traitData)
-names(traitData)
-
-# remove columns that hold information we do not need.
-allTraits = traitData[, -c(31, 16)];
-allTraits = allTraits[, c(2, 11:36) ];
-dim(allTraits)
-names(allTraits)
-
-# Form a data frame analogous to expression data that will hold the clinical traits.
-
-femaleSamples = rownames(datExpr);
-traitRows = match(femaleSamples, allTraits$Mice);
-datTraits = allTraits[traitRows, -1];
-rownames(datTraits) = allTraits[traitRows, 1];
-
-collectGarbage();
-```
-
-להמשיך מכאן לפי סעעיף
+לעשות כאן סדר!
 
 
 
@@ -54,7 +31,7 @@ gene_tpm_collps <- gene_tpm %>% gather("library","tpm", -target_id, -gene_id) %>
 final_gene_tpm <- spread(gene_tpm_collps, key = "library", value = "gene_tpm") %>% column_to_rownames('gene_id')
 ```
 
-```{PCA libraries by gene}
+```{PCA libraries by gene, to detect outlier libraries}
 #transpose final_gene_tpm, and transform (log10+0.000001) 
 final_gene_tpm_T<- transposeBigData(log10(final_gene_tpm + 0.000001))
 
@@ -62,7 +39,7 @@ final_gene_tpm_T<- transposeBigData(log10(final_gene_tpm + 0.000001))
 autoplot(prcomp(final_gene_tpm_T), label = TRUE)
 
 #remove outlier libraries (by col)
-for_modules <- final_gene_tpm %>% select(-c("SRR5109825", "SRR5109827", "SRR533974" , "SRR3927496", "SRR8867385")) %>%
+for_modules <- final_gene_tpm %>% dplyr::select(-c("SRR5109825", "SRR5109827", "SRR533974" , "SRR3927496", "SRR8867385")) %>%
    transposeBigData() 
 
 #plot PCA - the reduced file
@@ -74,7 +51,7 @@ autoplot(prcomp(transposeBigData(log10(for_modules + 0.000001))), label = TRUE)
 ```{PCA libraries by isoform}
 #transpose final_gene_tpm, and transform 
 gene_tpm_T <- gene_tpm %>% 
-  select(-"gene_id") %>%
+  dplyr::select(-"gene_id") %>%
   column_to_rownames("target_id") %>% 
   transposeBigData() 
   
@@ -148,13 +125,17 @@ Constructing the gene network and identifying modules is now a simple function c
 #
 #=====================================================================================
 
-net = blockwiseModules(for_modules, power = 10,
+net = blockwiseModules(for_modules, power = 12,
                        TOMType = "unsigned", minModuleSize = 30,
                        reassignThreshold = 0, mergeCutHeight = 0.25,
                        numericLabels = TRUE, pamRespectsDendro = FALSE,
                        saveTOMs = TRUE,
                        saveTOMFileBase = "Varroa_modulesTOM", 
                        verbose = 3)
+
+# To see how many modules were identified and what the module sizes are, one can use table(net$colors). Its output is 
+ 
+table(net$colors)
 ```
 
 ```{WGCNA 2a automatic}
@@ -193,64 +174,494 @@ save(MEs, moduleLabels, moduleColors, geneTree,
 
 Relating modules to external information and identifying important
 genes
+
+```{prepare the "viralTraits" table (like the "clinicalTraits.csv") of virus variables you wish to correlate to varroa modules}
+# (1) 'viral traits': total viral load, and viral diversity (alpha),  @any other traits?@:
+
+# (1.a) prepare the 'total viral load' table (total viral load per library)
+total_virus_load <- left_join(virusId, df, by = "target_id") %>% 
+  dplyr::select(-target_id) %>% 
+  gather("library", "tpm", -description) %>% 
+  group_by(library) %>%
+  summarise(total_load = sum(tpm)) %>%
+  #identify and remove the row numbers of the outlierd libraries (found by PCA) 
+  filter(!(library %in% c("SRR5109825", "SRR5109827", "SRR533974" , "SRR3927496", "SRR8867385")))
+
+# (1.b) prepare the 'viral diversity' table (alpha value per library)*********!!!!!!
+viral_diver <- 
+
+ # join the two tables (1.a) and (1.b) -by library-, and save as 'viralTraits'
+viralTraits <- total_virus_load
+  
+  אחרי שנסיים להכין את האלפא נאחד את שתי הטבלאות הללו. left_join(viral_diver, total_virus_load, by = "library") %>% column_to_rownames("library") 
+
+# (2) 'viral load': different viruses load, in each library.
+
+# before starting: 
+# prepare the 'viruses_load' table, containing the load of #each virus#, per library
+# plot the viruses abundance in each library 
+x <- left_join(virusId, df, by = "target_id") %>% dplyr::select(-target_id) 
+  
+# sum all VOV_1 tpms in each library in a seperate table 'VOV_1':
+    VOV_1 <- x %>% 
+      dplyr::slice(3:8) %>%
+      group_by(description) %>%
+      summarize_all(sum)
+#filter out the segments of VOV_1,  
+x <- dplyr::filter(x, description != "VOV_1")
+
+# and insert the "VOV_1" in row 2 of df "x"
+r <- 2
+insertRow <- function(x, VOV_1, r) {
+  x[seq(r+1,nrow(x)+1),] <- x[seq(r,nrow(x)),]
+  x[r,] <- VOV_1
+  x
+}
+
+viruses_load <- insertRow(x, VOV_1, r)
+  
+
+# (2.a) first option: 
+# prepare the 'viruses_load' table, with 18 viruses, 
+# excluding viruses with 'zero tpm': CBPV, AFV, ANV , VPVL_46 and VPVL_36. left with 18 viruses
+a_viruses_load <- viruses_load %>%
+  filter(description %in% c("DWVa", "DWVc", "IAPV", "KBV", "ABPV",  "SBPV", "LSV", "BQCV","SV", "VDV1/DWVb", "VDV2", "VDV3", "BMV", "ARV_2", "AmFV","VTLV","VDV4","VOV_1")) %>%
+  column_to_rownames("description") %>% 
+  transposeBigData() %>%
+  rownames_to_column("library") %>%
+  #identify and remove the row numbers of the outlierd libraries (found by PCA) 
+  filter(!(library %in% c("SRR5109825", "SRR5109827", "SRR533974" , "SRR3927496", "SRR8867385"))) %>% 
+  column_to_rownames("library")
+
+# (2.b) second option:    
+# prepare the 'viruses_load' table, with 15 viruses, 
+# excluding viruses with tpm=zero for all libraries, in addition to viruses with very low levels, that appear in a few libraries: LSV, SBPV, KBV. So we are left with 15 of the initial 23 viruses
+
+b_viruses_load <- viruses_load %>%
+  # filter for specific viruses
+  filter(description %in% c("DWVa", "DWVc", "IAPV", "ABPV", "BQCV","SV", "VDV1/DWVb", "VDV2", "VDV3", "BMV", "ARV_2", "AmFV","VTLV","VDV4","VOV_1")) %>%
+  column_to_rownames("description") %>% 
+  transposeBigData() %>%
+  rownames_to_column("library") %>%
+  #identify and remove the row numbers of the outlierd libraries (found by PCA) 
+  filter(!(library %in% c("SRR5109825", "SRR5109827", "SRR533974" , "SRR3927496", "SRR8867385"))) %>% 
+  column_to_rownames("library")
+
+```
+ 
+now that we have a 'viralTraits' tables, we can associate it with the varroa modules we found earlier
+
+i have saved the two files as in the tutorial:
+datTraits = "viralTraits": traits in columns, libraries in rows
+datExpr = "for_modules" : varroa genes in columns, libraries in rows  
+*note: in these files i have only 66 libraries, as we took some out afte PCA
+
+```{WGCNA 1  Data input, cleaning and pre-processing}
+# The last step is to save the relevant expression and trait data for use in the next steps 
+
+# the varroa modules with the 'viralTraits' (total load and diversity)- 
+chagne this fuke name to "1" or "2" once the viruse diversity will be reayd
+save(for_modules, viralTraits, file = "varroa_virus-01-dataInput.RData")
+
+# the varroa modules with the 'viruses load' (15 viruses)
+save(for_modules, b_viruses_load, file = "varroa_virus-01-dataInput.RData")
+
+```
+
+
 ```{WGCNA 3.a Quantifying module–trait associations}
-#=====================================================================================
-#
-#  Code chunk 2
-#
-#=====================================================================================
 
-lnames = load("Varroa_modules_networkConstruction-auto.RData")
+# Load the expression and trait data saved in the first part 
+lnames = load(file = "varroa_virus-01-dataInput.RData"); 
+
+#The variable lnames contains the names of loaded variables. 
+lnames 
+
+# Load network data saved in the second part.
+lnames = load(file = "Varroa_modules_networkConstruction-auto.RData"); 
 lnames
-# Rename variables to avoid conflicts
-femaleLabels = moduleLabels;
-femaleColors = moduleColors;
-femaleTree = geneTree;
-femaleMEs = orderMEs(MEs, greyName = "ME0");
-```
 
-```{WGCNA 3 Relating consensus modules to female set-specific modules}
-#=====================================================================================
-#
-#  Code chunk 3
-#
-#=====================================================================================
+# Define numbers of genes and samples
+nGenes = ncol(for_modules);
+nSamples = nrow(for_modules);
+# Recalculate MEs with color labels 
+MEs0 = moduleEigengenes(for_modules, moduleColors)$eigengenes
+MEs = orderMEs(MEs0)
 
+moduleTraitCor = cor(MEs, b_viruses_load, use = "p");
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples)
 
-lnames = load("Varroa_modules_networkConstruction-auto.RData")
-lnames
-```
+### Controlling the false discovery rate: Benjamini–Hochberg procedure ###
+# using p.adjust function, for all comparisons, 15 modules and 15 viruses (m=225). 
 
-```{WGCNA 3 Relating consensus modules to female set-specific modules}
-#=====================================================================================
-#
-#  Code chunk 4
-#
-#=====================================================================================
+# first make the p-value matrix into a dataframe
+moduleTraitPvalue_0 <- as.data.frame(moduleTraitPvalue)
 
+# then "gather" all the p-values, so they will apear in one column
+longer_Pvalue <- moduleTraitPvalue_0 %>% 
+    rownames_to_column("module") %>%
+    gather("virus", "pvalue", -module)
 
-# Isolate the module labels in the order they appear in ordered module eigengenes
-femModuleLabels = substring(names(femaleMEs), 3)
-consModuleLabels = substring(names(consMEs[[1]]$data), 3)
-# Convert the numeric module labels to color labels
-femModules = labels2colors(as.numeric(femModuleLabels))
-consModules = labels2colors(as.numeric(consModuleLabels))
-# Numbers of female and consensus modules
-nFemMods = length(femModules)
-nConsMods = length(consModules)
-# Initialize tables of p-values and of the corresponding counts
-pTable = matrix(0, nrow = nFemMods, ncol = nConsMods);
-CountTbl = matrix(0, nrow = nFemMods, ncol = nConsMods);
-# Execute all pairwaise comparisons
-for (fmod in 1:nFemMods)
-  for (cmod in 1:nConsMods)
-  {
-    femMembers = (femaleColors == femModules[fmod]);
-    consMembers = (moduleColors == consModules[cmod]);
-    pTable[fmod, cmod] = -log10(fisher.test(femMembers, consMembers, alternative = "greater")$p.value);
-    CountTbl[fmod, cmod] = sum(femaleColors == femModules[fmod] & moduleColors ==
-                      consModules[cmod])
-  }
+# now calculate the p.adjust for each p-value 
+Padjust <- p.adjust(longer_Pvalue$pvalue, method = "fdr")
+
+# and add the column of adjusted pvalues
+Padjust <- add_column(longer_Pvalue, Padjust)
+
+# now spread it back
+moduleTraitPadjust <- Padjust %>% 
+    dplyr::select(-pvalue) %>% 
+    group_by(virus) %>%
+    pivot_wider(names_from = virus, values_from = Padjust)
+moduleTraitPadjust <- column_to_rownames(moduleTraitPadjust, "module")
+
+# before correlating, make the two dataframes into "matrixes"
+moduleTraitCor <- as.matrix(moduleTraitCor)
+moduleTraitPadjust <- as.matrix(moduleTraitPadjust)
 
 ```
 
+```{mantel.test: the corelation btw two matrixes: x , how virus interacts with varroa expression, and y the correlation of viral abundance across samples}
+
+virusAbundCor <- as.data.frame(virusAbundCor)
+moduleTraitCor <- as.data.frame(moduleTraitCor)
+
+diag(virusAbundCor) <- diag(moduleTraitCor) <- 0
+
+mantel.test(moduleTraitCor, virusAbundCor, graph = TRUE,
+            main = "Mantel test: a random example with 6 X 6 matrices
+representing asymmetric relationships",
+            xlab = "z-statistic", ylab = "Density",
+            sub = "The vertical line shows the observed z-statistic")
+            
+```
+
+ 
+ 
+```{WGCNA 3.a Quantifying module–trait associations - subdeviding libraries by categories}
+# read csv table with the factors you want to test for the "module-trait cor"
+ModTraitFac <- read.csv("/Users/nuriteliash/OneDrive - OIST/Repos/varroa-virus-networks/module_trait_factors.csv")
+
+# for each factor, find the existing categories
+cats <- unique(ModTraitFac$Lib_treat)
+
+# make a list for the future correlations output
+resultsCor <- list()
+resultsPval <- list()
+# for both matrixes to be correlated (virus tpms "b_viruses_load", and the varroa modules eigengenes "MEs"),
+# take out the rownames - to column:
+MEs2 <- rownames_to_column(MEs, var = "Library")
+b_viruses_load2 <- rownames_to_column(b_viruses_load, var = "Library")
+
+# now make a loop that takes each category in the specified factor above, and filter only for the corresponsing libreries
+# the selected libraries are then correlated (pearson)
+for(i in cats) {
+  libs <- ModTraitFac %>% filter(Lib_treat == i) %>% pull(Library)
+  MEs.sub <- MEs2 %>% filter(Library %in% libs) %>% dplyr::select(-Library)
+  b_viruses_load2.sub <- b_viruses_load2 %>% filter(Library %in% libs) %>% dplyr::select(-Library)
+  resultsCor[[i]] <- cor(MEs.sub, b_viruses_load2.sub, use = "p")
+}
+
+# now take a look at each category correlation results (correlation R and p-values). 
+rRNA_dplCor <- resultsCor$rRNA_dpl
+rRNA_dplPval <- corPvalueStudent(resultsCor$rRNA_dpl, nSamples)
+
+# adjust the "adult_femPval":
+# if needed
+
+# now vizualize the sub interaction:
+sizeGrWindow(10,6)
+# Will display correlations and their p-values
+textMatrix = paste(signif(rRNA_dplCor, 2), "\n(",
+signif(rRNA_dplPval, 1), ")", sep = "");
+dim(textMatrix) = dim(rRNA_dplCor)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = rRNA_dplCor,
+xLabels = names(b_viruses_load),
+yLabels = names(MEs),
+ySymbols = names(MEs),
+colorLabels = FALSE,
+colors = blueWhiteRed(50),
+textMatrix = textMatrix,
+setStdMargins = FALSE,
+cex.text = 0.5,
+zlim = c(-1,1),
+main = paste("Varroa Module-viruses relationships"))
+```
+
+```{WGCNA 3.a Quantifying module–trait associations}
+sizeGrWindow(10,6)
+# Will display correlations and their p-values
+textMatrix = paste(signif(moduleTraitCor, 2), "\n(",
+signif(moduleTraitPadjust, 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor)
+par(mar = c(6, 8.5, 3, 3));
+# Display the correlation values within a heatmap plot
+labeledHeatmap(Matrix = moduleTraitCor,
+xLabels = names(b_viruses_load),
+yLabels = names(MEs),
+ySymbols = names(MEs),
+colorLabels = FALSE,
+colors = blueWhiteRed(50),
+textMatrix = textMatrix,
+setStdMargins = FALSE,
+cex.text = 0.5,
+zlim = c(-1,1),
+main = paste("Varroa Module-viruses relationships"))
+```
+
+```{on the side- hirarchial clustering}
+#plot hirarchial clustering of the viruses, accodring to their correlation matrix to the modules.
+plot(hclust(dist(abs(transposeBigData(moduleTraitCor)))))
+
+```
+We quantify associations of individual genes with our trait of interest (total_load ) by defining Gene Significance GS as (the absolute value of) the correlation between the gene and the trait. 
+For each module, we also define a quantitative measure of module membership MM as the correlation of the module eigengene and the gene expression profile. 
+This allows us to quantify the similarity of all genes on the array to every module.
+
+```{WGCNA 3.b Gene relationship to trait and important modules: Gene Significance and Module Membership}
+
+# Define variable total_load containing the total_load column of viralTraits
+total_load = as.data.frame(viralTraits$total_load);
+names(total_load) = "total_load"
+
+# names (colors) of the modules
+modNames = substring(names(MEs), 3)
+
+geneModuleMembership = as.data.frame(cor(for_modules, MEs, use = "p"));
+MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples));
+
+names(geneModuleMembership) = paste("MM", modNames, sep="");
+names(MMPvalue) = paste("p.MM", modNames, sep="");
+
+geneTraitSignificance = as.data.frame(cor(for_modules, total_load, use = "p"));
+GSPvalue = as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSamples));
+
+names(geneTraitSignificance) = paste("GS.", names(total_load), sep="");
+names(GSPvalue) = paste("p.GS.", names(total_load), sep="");
+```
+
+Using the GS and MM measures, we can identify genes that have a high significance for total_load as well as high module membership in interesting modules. As an example, we look at the Salmon module that has the highest association with total_load. We plot a scatterplot of Gene Significance vs. Module Membership in the salmon module:
+
+```{WGCNA 3.c Intramodular analysis: identifying genes with high GS and MM}
+module = "salmon"
+column = match(module, modNames);
+moduleGenes = moduleColors==module;
+sizeGrWindow(7, 7);
+par(mfrow = c(1,1));
+verboseScatterplot(abs(geneModuleMembership[moduleGenes, column]),
+                   abs(geneTraitSignificance[moduleGenes, 1]),
+                   xlab = paste("Module Membership in", module, "module"),
+                   ylab = "Gene significance for total viral load",
+                   main = paste("Module membership vs. gene significance\n"),
+                   cex.main = 1.2, cex.lab = 1.2, cex.axis = 1.2, col = module)
+```
+
+We have found modules with high association with our trait of interest, and have identified their *central players* by the Module Membership measure. 
+We now merge this statistical information with gene annotation and write out a file that summarizes the most important results and can be inspected in standard spreadsheet software such as MS Excel or Open Office Calc. 
+Our expression data are only annotated by probe ID names: the command
+--names(for_modules)--
+will return all probe IDs included in the analysis. 
+Similarly,
+--names(for_modules)[moduleColors=="salmon"]--
+will return probe IDs belonging to the salmon module. 
+To facilitate interpretation of the results, we use a probe annotation file provided by the manufacturer of the expression arrays to connect probe IDs to gene names and
+universally recognized identification numbers (Entrez codes).
+
+```{WGCNA 3.d Summary output of network analysis results}
+
+```
+
+
+
+or -
+```{GO Enrichment analysis using Maeva code }
+# data provided in here
+# https://github.com/MaevaTecher/varroa-denovo-genomes/blob/master/data/Positive%20selection/Vdesselected1511.csv
+
+# codes provided in here # https://maevatecher.github.io/varroa-denovo-genomes/#go_term_enrichment_of_positively_selected_genes
+
+library("tidyverse")
+library("knitr") # for the markdown
+library("kableExtra") # for creating a scrolling table
+library("ggplot2") # for plotting 
+library("ape") # for reading the phylogenetic tree
+library("Biostrings")
+library("ggtree") # for plotting the tree
+library("ggrepel") # for spreading text labels on the plot
+library("scales") # for axis labels notation
+library("tidyverse")
+library("GO.db")
+library("WGCNA")
+library("reshape2")
+library("RSQLite")
+library("AnnotationDbi")
+library("GSEABase")
+library("GOstats")
+library("maps") # for the map background
+library("leaflet") #for the interactive maps
+library("htmltools")
+library("rgdal")
+library("grid")
+library("gridExtra")
+library("GeneOverlap") 
+
+setwd("/Users/nuriteliash/OneDrive - OIST/Repos/varroa-denovo-genomes")
+# Display the current working directory
+getwd()
+
+##Preparing the GO frame
+annot.vd <- read.csv("data/Positive selection/VdesGOready2.csv") 
+
+annot.vd2 <- annot.vd %>%
+  mutate(evidence = "IEA") %>%
+  dplyr::select(go_id = GO.ids, evidence, gene = Gene.id)
+
+#head(annot.vd2)
+
+goFrame.vd <-GOFrame(annot.vd2, organism = "Vd")
+goAllFrame.vd <-GOAllFrame(goFrame.vd)
+gsc.vd <-GeneSetCollection(goAllFrame.vd, setType = GOCollection())
+
+universe.vd <- unique(annot.vd2$gene)
+#head(universe.vd)
+
+# make a table for  modules, with its genes.
+# change "cyan" to the name of the desired module, in the first line: [moduleColors=="cyan"]
+ME <- names(for_modules)[moduleColors=="magenta"]
+ME_df <- data.frame(geneno = ME,Gene.id = ME)
+ME_df$Gene.id <- paste("LOC", ME_df$Gene.id, sep="")
+    
+genes.vd <- as.integer(unique(ME_df$geneno))
+head(genes.vd)
+
+params.vd <- GSEAGOHyperGParams(name = "Vd_GO_enrichment",
+                             geneSetCollection = gsc.vd,
+                             geneIds = genes.vd,
+                             universeGeneIds = universe.vd,
+                             ontology = "BP", # change with MF, CC to test all
+                             pvalueCutoff = 0.05,
+                             conditional = F,
+                             testDirection = "over")
+
+over.vd <- hyperGTest(params.vd)
+
+#summary(over.vd)
+GO_enrich.vd <- as.data.frame(summary(over.vd))
+GO_enrich.vd %>% 
+    arrange(Pvalue) %>% 
+    write.csv(file = "GO_term_enrichment_magentaBP.csv")
+
+# vizualize the GO enrichment analysis using REVIGO online tool:
+  
+# --------------------------------------------------------------------------
+# Here is your data from REVIGO. Scroll down for plot configuration options.
+
+revigo.names <- c("term_ID","description","frequency_%","plot_X","plot_Y","plot_size","log10_p_value","uniqueness","dispensability");
+revigo.data <- rbind(c("GO:0000003","reproduction", 0.769,-5.138, 0.177, 4.994,-4.0000,1.000,0.000),
+c("GO:0001906","cell killing", 0.032,-7.082,-0.111, 3.608,-4.0000,0.996,0.000),
+c("GO:0001909","leukocyte mediated cytotoxicity", 0.013,-6.929, 1.682, 3.218,-4.0000,0.972,0.000),
+c("GO:0002376","immune system process", 0.600,-1.075,-0.588, 4.886,-4.0000,0.996,0.000),
+c("GO:0022414","reproductive process", 0.736,-2.917,-3.465, 4.975,-4.0000,0.964,0.000),
+c("GO:0032501","multicellular organismal process", 2.373,-5.838, 1.964, 5.483,-4.0000,0.996,0.000),
+c("GO:0032502","developmental process", 2.812,-5.592, 1.068, 5.557,-4.0000,0.996,0.000),
+c("GO:0048511","rhythmic process", 0.077,-3.889,-3.989, 3.994,-4.0000,0.996,0.000),
+c("GO:0051179","localization",18.495,-3.950, 0.399, 6.375,-4.0000,0.997,0.000),
+c("GO:0065009","regulation of molecular function", 1.726, 5.036,-7.134, 5.345,-4.0000,0.801,0.000),
+c("GO:0070828","heterochromatin organization", 0.012, 5.618, 3.351, 3.201,-4.0000,0.895,0.000),
+c("GO:0099504","synaptic vesicle cycle", 0.032,-1.410, 4.550, 3.617,-4.0000,0.897,0.000),
+c("GO:1903842","response to arsenite ion", 0.000,-5.391,-4.987, 0.477,-4.0000,0.879,0.000),
+c("GO:0061738","late endosomal microautophagy", 0.001,-6.456,-1.040, 1.968,-4.0000,0.972,0.016),
+c("GO:0042119","neutrophil activation", 0.009,-1.636, 2.591, 3.056,-4.0000,0.827,0.018),
+c("GO:0043101","purine-containing compound salvage", 0.132, 2.064, 0.269, 4.230,-4.0000,0.952,0.021),
+c("GO:0042026","protein refolding", 0.069,-2.308,-2.466, 3.949,-4.0000,0.959,0.023),
+c("GO:0006457","protein folding", 0.903,-0.545, 0.654, 5.064,-4.0000,0.970,0.029),
+c("GO:0070661","leukocyte proliferation", 0.051,-1.266,-2.229, 3.814,-4.0000,0.948,0.048),
+c("GO:0006479","protein methylation", 0.343, 3.293,-0.974, 4.643,-4.0000,0.929,0.048),
+c("GO:0006013","mannose metabolic process", 0.031,-4.076, 4.348, 3.596,-4.0000,0.947,0.052),
+c("GO:0060538","skeletal muscle organ development", 0.042, 1.052,-3.457, 3.732,-4.0000,0.828,0.053),
+c("GO:0006793","phosphorus metabolic process",13.507,-3.231,-0.420, 6.239,-4.0000,0.956,0.077),
+c("GO:0007018","microtubule-based movement", 0.287, 2.566, 4.469, 4.567,-4.0000,0.859,0.123),
+c("GO:1901564","organonitrogen compound metabolic process",17.886, 1.486, 0.892, 6.361,-4.0000,0.973,0.139),
+c("GO:0043412","macromolecule modification", 9.785, 4.258,-1.963, 6.099,-4.0000,0.966,0.141),
+c("GO:0000082","G1/S transition of mitotic cell cycle", 0.062, 0.439, 3.949, 3.903,-4.0000,0.899,0.141),
+c("GO:0008037","cell recognition", 0.067, 1.280, 3.376, 3.931,-4.0000,0.918,0.142),
+c("GO:0002931","response to ischemia", 0.004,-5.644,-6.052, 2.747,-4.0000,0.879,0.144),
+c("GO:0036337","Fas signaling pathway", 0.001,-0.446,-7.916, 1.863,-4.0000,0.779,0.167),
+c("GO:0098657","import into cell", 0.015,-2.044, 5.578, 3.288,-4.0000,0.945,0.170),
+c("GO:0032958","inositol phosphate biosynthetic process", 0.007, 2.278, 5.752, 2.943,-4.0000,0.911,0.181),
+c("GO:1905710","positive regulation of membrane permeability", 0.006, 5.150,-4.937, 2.897,-4.0000,0.838,0.183),
+c("GO:0010660","regulation of muscle cell apoptotic process", 0.006, 3.931,-7.089, 2.903,-4.0000,0.758,0.183),
+c("GO:0043484","regulation of RNA splicing", 0.040, 5.541,-6.138, 3.705,-4.0000,0.803,0.212),
+c("GO:0071806","protein transmembrane transport", 0.525,-0.843, 5.574, 4.829,-4.0000,0.891,0.215),
+c("GO:1990834","response to odorant", 0.001,-5.097,-5.693, 1.881,-4.0000,0.876,0.244),
+c("GO:0035303","regulation of dephosphorylation", 0.046, 5.878,-4.648, 3.768,-4.0000,0.804,0.244),
+c("GO:0070841","inclusion body assembly", 0.003, 6.190, 2.720, 2.643,-4.0000,0.905,0.253),
+c("GO:0006897","endocytosis", 0.235,-1.395, 5.236, 4.480,-4.0000,0.913,0.253),
+c("GO:0009605","response to external stimulus", 1.370,-4.680,-7.032, 5.245,-4.0000,0.854,0.258),
+c("GO:0014823","response to activity", 0.005,-4.428,-6.797, 2.845,-4.0000,0.896,0.262),
+c("GO:0043086","negative regulation of catalytic activity", 0.400, 4.302,-6.930, 4.710,-4.0000,0.797,0.263),
+c("GO:1903311","regulation of mRNA metabolic process", 0.044, 6.081,-6.099, 3.755,-4.0000,0.801,0.266),
+c("GO:0038034","signal transduction in absence of ligand", 0.013, 0.292,-7.747, 3.215,-4.0000,0.754,0.279),
+c("GO:0019538","protein metabolic process",18.489, 5.490,-1.126, 6.375,-4.0000,0.963,0.280),
+c("GO:0032879","regulation of localization", 0.726, 6.199,-3.931, 4.969,-4.0000,0.768,0.280),
+c("GO:1904764","chaperone-mediated autophagy translocation complex disassembly", 0.000, 4.756, 3.166, 0.602,-4.0000,0.891,0.301),
+c("GO:0061635","regulation of protein complex stability", 0.001, 5.404,-4.122, 2.021,-4.0000,0.857,0.305),
+c("GO:0007033","vacuole organization", 0.102, 5.850, 3.739, 4.119,-4.0000,0.883,0.307),
+c("GO:0009581","detection of external stimulus", 0.057,-4.897,-6.985, 3.861,-4.0000,0.865,0.314),
+c("GO:0048519","negative regulation of biological process", 1.984, 4.912,-7.204, 5.406,-4.0000,0.790,0.316),
+c("GO:0010605","negative regulation of macromolecule metabolic process", 1.169, 5.434,-6.294, 5.176,-4.0000,0.704,0.316),
+c("GO:0035690","cellular response to drug", 0.013,-4.098,-6.589, 3.223,-4.0000,0.822,0.322),
+c("GO:0006812","cation transport", 3.242,-0.779, 5.719, 5.619,-4.0000,0.914,0.330),
+c("GO:0009611","response to wounding", 0.127,-5.058,-6.660, 4.212,-4.0000,0.854,0.352),
+c("GO:0010286","heat acclimation", 0.005,-3.957,-6.329, 2.807,-4.0000,0.859,0.355),
+c("GO:0046777","protein autophosphorylation", 0.077, 5.992, 0.788, 3.993,-4.0000,0.931,0.368),
+c("GO:0030162","regulation of proteolysis", 0.304, 5.419,-5.553, 4.591,-4.0000,0.773,0.370),
+c("GO:1902044","regulation of Fas signaling pathway", 0.000,-0.631,-8.134, 1.663,-4.0000,0.748,0.377),
+c("GO:0045109","intermediate filament organization", 0.004, 5.072, 3.643, 2.732,-4.0000,0.851,0.378),
+c("GO:0044087","regulation of cellular component biogenesis", 0.404, 6.497,-2.881, 4.715,-4.0000,0.756,0.380),
+c("GO:0097035","regulation of membrane lipid distribution", 0.064, 6.638,-2.028, 3.914,-4.0000,0.739,0.383),
+c("GO:0009190","cyclic nucleotide biosynthetic process", 0.182, 3.848, 2.054, 4.369,-4.0000,0.882,0.385),
+c("GO:0032469","endoplasmic reticulum calcium ion homeostasis", 0.007, 7.028,-4.498, 2.963,-4.0000,0.806,0.387),
+c("GO:0009628","response to abiotic stimulus", 0.571,-4.512,-7.315, 4.865,-4.0000,0.863,0.391),
+c("GO:2000504","positive regulation of blood vessel remodeling", 0.000, 2.806,-5.503, 1.799,-4.0000,0.722,0.393));
+
+one.data <- data.frame(revigo.data);
+names(one.data) <- revigo.names;
+one.data <- one.data [(one.data$plot_X != "null" & one.data$plot_Y != "null"), ];
+one.data$plot_X <- as.numeric( as.character(one.data$plot_X) );
+one.data$plot_Y <- as.numeric( as.character(one.data$plot_Y) );
+one.data$plot_size <- as.numeric( as.character(one.data$plot_size) );
+one.data$log10_p_value <- as.numeric( as.character(one.data$log10_p_value) );
+one.data$frequency <- as.numeric( as.character(one.data$frequency) );
+one.data$uniqueness <- as.numeric( as.character(one.data$uniqueness) );
+one.data$dispensability <- as.numeric( as.character(one.data$dispensability) );
+#head(one.data);
+
+
+# --------------------------------------------------------------------------
+# Names of the axes, sizes of the numbers and letters, names of the columns,
+# etc. can be changed below
+
+p1 <- ggplot( data = one.data );
+p1 <- p1 + geom_point( aes( plot_X, plot_Y, colour = log10_p_value, size = plot_size), alpha = I(0.6) ) + scale_size_area();
+p1 <- p1 + scale_colour_gradientn( colours = c("blue", "green", "yellow", "red"), limits = c( min(one.data$log10_p_value), 0) );
+p1 <- p1 + geom_point( aes(plot_X, plot_Y, size = plot_size), shape = 21, fill = "transparent", colour = I (alpha ("black", 0.6) )) + scale_size_area();
+p1 <- p1 + scale_size( range=c(5, 30)) + theme_bw(); # + scale_fill_gradientn(colours = heat_hcl(7), limits = c(-300, 0) );
+ex <- one.data [ one.data$dispensability < 0.15, ]; 
+p1 <- p1 + geom_text( data = ex, aes(plot_X, plot_Y, label = description), colour = I(alpha("black", 0.85)), size = 3 );
+p1 <- p1 + labs (y = "semantic space x", x = "semantic space y");
+p1 <- p1 + theme(legend.key = element_blank()) ;
+one.x_range = max(one.data$plot_X) - min(one.data$plot_X);
+one.y_range = max(one.data$plot_Y) - min(one.data$plot_Y);
+p1 <- p1 + xlim(min(one.data$plot_X)-one.x_range/10,max(one.data$plot_X)+one.x_range/10);
+p1 <- p1 + ylim(min(one.data$plot_Y)-one.y_range/10,max(one.data$plot_Y)+one.y_range/10);
+
+
+
+# --------------------------------------------------------------------------
+# Output the plot to screen
+
+p1;
+```
